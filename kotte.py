@@ -205,7 +205,7 @@ def Del():
         del Buf[start:end+1]
         Index=max(start-1,0); Right()
     else:
-        if Buf[Index]!=CR:
+        if Index<len(Buf) and Buf[Index]!=CR:
             del Buf[Index]; Index=min(len(Buf)-1,Index) 
 
 def input(prompt='',initValue=''):
