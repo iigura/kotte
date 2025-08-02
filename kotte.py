@@ -1,13 +1,11 @@
 # kotte = Kanji Oriented Tiny Text Editor by Koji Iigura, 2025.
 import sys,os,subprocess,termios,signal,curses,unicodedata,hashlib
 
-# constants
 ESC='\x1b'; CR='\n'; DEL='\x7f'
 CtrlD='\x04';CtrlE='\x05';CtrlQ='\x11';CtrlR='\x12';CtrlS='\x13'
 CtrlU='\x15';CtrlY='\x19'
 TabSize=4
 
-# variable
 Buf=[];Attr=[];Done=False;SavedHash=None
 AbsFilePath=FilePathForDisp=None
 Index=PageStart=PageEnd=Row=Col=TargetCol=0
@@ -15,13 +13,11 @@ SelectionBasePoint=-1; LastIndexForDisplay=None; InfoStr=''
 SearchStr=None
 StdScr=None
 
-# multi-byte, multi-width fullscreen editor core functions
 charWidth=lambda x,c: TabSize-x%TabSize if c=='\t' \
           else 2 if unicodedata.east_asian_width(c) in 'WF' else 1
 
 def getNextPos(p,x,y):
-    if p==len(Buf):
-        w=1
+    if p==len(Buf): w=1
     else:
         c=Buf[p]
         if c=='\n': return (0,y+1)
@@ -202,11 +198,12 @@ def Del():
     global Index
     if isSelected():
         start,end=getSelectedArea(Index)
-        del Buf[start:end+1]
+        del Buf[start:end+1]; del Attr[start:end+1]
         Index=max(start-1,0); Right()
     else:
         if Index<len(Buf) and Buf[Index]!=CR:
-            del Buf[Index]; Index=min(len(Buf)-1,Index) 
+            del Buf[Index]; del Attr[Index]
+            Index=min(len(Buf)-1,Index) 
 
 def input(prompt='',initValue=''):
     y=curses.LINES-1
@@ -340,6 +337,10 @@ def prevWord(startIndex):
     p=lineTop(startIndex-1)
     while (q:=nextWord(p))<startIndex: p=q  
     return p
+
+def deleteWord(startIndex):
+    end=nextWord(startIndex)
+    del Buf[startIndex:end]; del Attr[startIndex:end]
 
 def ScrollUp():
     global PageStart
