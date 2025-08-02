@@ -411,7 +411,9 @@ def InsertLineBelow():
     Buf.insert(Index,'\n'); Attr.insert(Index,curses.A_NORMAL)
     Right(); Display()
     Insert()
-def InsertLineAbove(): Up(); InsertLineBelow()
+def InsertLineAbove():
+    if lineTop(Index)==0: Buf.insert(0,'\n')
+    else: Up(); InsertLineBelow()
 def Append():
     if len(Buf)>0 and Buf[Index]!='\n': Right()
     Insert()
