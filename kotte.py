@@ -315,8 +315,8 @@ def deleteLine(indexOfTheTargetLine):
     else:
         start=lineTop(indexOfTheTargetLine)
         end=nextLineTop(indexOfTheTargetLine)
-    if end is None: del Buf[Index:]
-    else: del Buf[start:end]
+    if end is None: del Buf[Index:]; del Attr[Index:]
+    else: del Buf[start:end]; del Attr[start:end]
     Index=max(start-1,0); LineBegin()
     row=Row; Display()
     if row>Row: Down()
