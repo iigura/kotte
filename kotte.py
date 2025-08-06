@@ -381,10 +381,11 @@ def Search():
     s=input('','/')
     if s is not None: SearchStr=s[1:]; SearchNext()
 
-# ---------------------------------------------------------
 # high-level functions built on core functions
-# ---------------------------------------------------------
-def LineEnd():Down(); LineBegin(); Left()
+def LineEnd():
+    Display(); y=Row
+    while y==Row and (Right() is not None): Display()
+    if y<Row: Left()
 def Top():global Index,PageStart; Index=PageStart=0
 def Bottom():
     global PageStart,Index
@@ -410,8 +411,7 @@ def Join():
 def InsertLineBelow():
     LineEnd(); Display()
     Buf.insert(Index,'\n'); Attr.insert(Index,curses.A_NORMAL)
-    Right(); Display()
-    Insert()
+    Right(); Display(); Insert()
 def InsertLineAbove():
     if lineTop(Index)==0: Buf.insert(0,'\n')
     else: Up(); InsertLineBelow()
