@@ -41,7 +41,7 @@ def getCol(targetIndex):
     return x
 
 def lineTop(scanStartOffset):
-    if scanStartOffset==0: return 0
+    if scanStartOffset<=0: return 0
     if Buf[scanStartOffset-1]=='\n': return scanStartOffset
     x=0; lineTopIndex=p=getCol0Index(scanStartOffset)
     while p<scanStartOffset:
@@ -84,7 +84,8 @@ def Select():
 
 def Display(statusLine=None):
     global PageEnd,LastIndexForDisplay,InfoStr,Row,Col
-    assert Index>=PageStart
+    assert Index>=PageStart,f"Index={Index} PageStart={PageStart}"
+    assert len(Buf)==len(Attr),f"Buf={len(Buf)} Attr={len(Attr)}"
     if SelectionBasePoint>=0:
         clearSelectAreaAttr(LastIndexForDisplay)
         setSelectAreaAttr(Index)
@@ -92,13 +93,12 @@ def Display(statusLine=None):
     StdScr.clear(); StdScr.move(0,0); x=y=0
     p=PageStart
     while not(curses.LINES-2<=y or len(Buf)<=p):
-        c=Buf[p]
+        c=Buf[p]; a=Attr[p]
         if p==Index: cursorX=x;cursorY=y
-        if c=='\n':
-            y+=1; x=0
+        if c=='\n': y+=1; x=0
         else:
             w=charWidth(x,c)
-            if x+w<=curses.COLS: StdScr.addstr(y,x,c,Attr[p])
+            if x+w<=curses.COLS: StdScr.addstr(y,x,c,a)
             else: p-=1 # redo Buf[p]
             x+=w
         if x>=curses.COLS: y+=1; x=0
@@ -173,9 +173,8 @@ def getFilePathStrForDisp():
     # try using a relative path format
     candidate=os.path.relpath(AbsFilePath,os.getcwd())
     if len(candidate)<=maxlen: return rel
-    # last resort: display with truncation
     if len(AbsFilePath)<=maxlen: return text
-    return '...'+AbsFilePath[-(maxlen-3):]
+    return '...'+AbsFilePath[-(maxlen-3):] # with truncation
 
 def isDirty():
     currentHash=hashlib.sha256(''.join(Buf).encode()).digest()
@@ -196,14 +195,15 @@ def Insert():
 
 def Del():
     global Index
+    if len(Buf)==0: return
     if isSelected():
         start,end=getSelectedArea(Index)
         del Buf[start:end+1]; del Attr[start:end+1]
         Index=max(start-1,0); Right()
     else:
-        if Index<len(Buf) and Buf[Index]!=CR:
+        if len(Buf)>0 and Index<len(Buf) and Buf[Index]!=CR:
             del Buf[Index]; del Attr[Index]
-            Index=min(len(Buf)-1,Index) 
+            Index=max(min(len(Buf)-1,Index),0)
 
 def input(prompt='',initValue=''):
     y=curses.LINES-1
