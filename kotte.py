@@ -136,7 +136,7 @@ def Left():
 
 def Right():
     global Index,PageStart,TargetCol
-    if Index>=len(Buf): return None
+    if len(Buf)==0 or Index>=len(Buf): return None
     TargetCol,newY=getNextPos(Index,Col,Row)
     Index+=1
     if newY>=curses.LINES-2:
@@ -407,7 +407,7 @@ def WordBackward():
 def Join():
     p=Index; LineEnd()
     while Buf[p]!=CR and p<len(Buf): p+=1
-    if Buf[p]==CR: Buf[p]=' '
+    if p<len(Buf) and Buf[p]==CR: Buf[p]=' '
 def InsertLineBelow():
     LineEnd(); Display()
     Buf.insert(Index,'\n'); Attr.insert(Index,curses.A_NORMAL)
@@ -416,7 +416,7 @@ def InsertLineAbove():
     if lineTop(Index)==0: Buf.insert(0,'\n')
     else: Up(); InsertLineBelow()
 def Append():
-    if len(Buf)>0 and Buf[Index]!='\n': Right()
+    if 0<=Index<len(Buf) and Buf[Index]!='\n': Right()
     Insert()
 def Replace():
     info('(replace to)',waitMsg=None); Display()
@@ -426,7 +426,7 @@ def Replace():
         Buf[start:end+1]=[c]*(end+1-start)
         Select()
     else:
-        Buf[Index]=c
+        if 0<=Index<len(Buf): Buf[Index]=c
 def ForcusCenterRow():
     global PageStart
     Display()
@@ -496,7 +496,6 @@ def restoreCtrlC(originalTermios,originalSigint):
 
 def Main(stdscr,targetFilePath):
     global StdScr,AbsFilePath,FilePathForDisp,Buf,Attr,SavedHash
-    os.environ.setdefault('ESCDELAY','1')
     StdScr=stdscr
     Load(targetFilePath)
     while not Done:
@@ -508,6 +507,7 @@ def Main(stdscr,targetFilePath):
 def kotte(targetFilePath):
     originalTermios,originalSigint=disableCtrlC()
     originalSettings=disableFlowControl()
+    os.environ.setdefault('ESCDELAY','1')
     try:
         curses.wrapper(Main,targetFilePath)
     finally:
