@@ -483,10 +483,8 @@ def disableCtrlC():
     newTermios=originalTermios[:]
     newTermios[3] &= ~(termios.ISIG|termios.ICANON|termios.ECHO)
     termios.tcsetattr(fd,termios.TCSADRAIN,newTermios)
-
     originalSigint=signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT,signal.SIG_IGN)
-
     return originalTermios,originalSigint
 
 def restoreCtrlC(originalTermios,originalSigint):
@@ -498,6 +496,7 @@ def Main(stdscr,targetFilePath):
     global StdScr,AbsFilePath,FilePathForDisp,Buf,Attr,SavedHash
     StdScr=stdscr
     Load(targetFilePath)
+    curses.raw()
     while not Done:
         Display()
         c=stdscr.get_wch()
