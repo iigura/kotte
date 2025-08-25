@@ -203,7 +203,7 @@ def Del():
     else:
         if len(Buf)>0 and Index<len(Buf) and Buf[Index]!=CR:
             del Buf[Index]; del Attr[Index]
-            Index=max(min(len(Buf)-1,Index),0)
+            Index=max(min(len(Buf),Index),0)
 
 def input(prompt='',initValue=''):
     y=curses.LINES-1
