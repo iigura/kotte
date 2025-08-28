@@ -193,6 +193,13 @@ def Insert():
             Buf.insert(Index,c);Attr.insert(Index,curses.A_NORMAL)
             Right()
 
+def adjustPageStart():
+    global PageStart
+    if Index<PageStart or PageEnd<Index:
+        PageStart=Index; ForcusCenterRow()
+    row=Row; Display()
+    if row>Row: Down()
+
 def Del():
     global Index
     if len(Buf)==0: return
@@ -204,6 +211,7 @@ def Del():
         if len(Buf)>0 and Index<len(Buf) and Buf[Index]!=CR:
             del Buf[Index]; del Attr[Index]
             Index=max(min(len(Buf),Index),0)
+    adjustPageStart()
 
 def input(prompt='',initValue=''):
     y=curses.LINES-1
@@ -282,8 +290,7 @@ def Load(param):
     else:
         p=param.strip().split()
         if len(p)!=1: info('invalid param (:e)'); return
-        filePath=p[0]
-        updateTargetFile(filePath)
+        filePath=p[0]; updateTargetFile(filePath)
         with open(AbsFilePath) as f: Buf=list(f.read())
         Attr=[curses.A_NORMAL for i in range(len(Buf))]
         Index=PageStart=0
@@ -305,11 +312,10 @@ def Colon():
     if s is not None: doColonCmd(s)
 
 def LineBegin():
-    global Index,TargetCol
-    Index=lineTop(Index); TargetCol=0
+    global Index,TargetCol; Index=lineTop(Index); TargetCol=0
 
 def deleteLine(indexOfTheTargetLine):
-    global Index
+    global Index,PageStart
     if isSelected():
         start,end=getSelectedArea(Index); end+=1; Select()
     else:
@@ -318,8 +324,7 @@ def deleteLine(indexOfTheTargetLine):
     if end is None: del Buf[Index:]; del Attr[Index:]
     else: del Buf[start:end]; del Attr[start:end]
     Index=max(start-1,0); LineBegin()
-    row=Row; Display()
-    if row>Row: Down()
+    adjustPageStart()
 
 isWordBoundary=lambda c:unicodedata.category(c)[0] in 'ZPS'
 
@@ -357,8 +362,7 @@ def ScrollDown():
 
 def SearchNext():
     if SearchStr is None: return
-    global Index
-    s=list(SearchStr)
+    global Index; s=list(SearchStr)
     for i in range(Index+1,len(Buf)-len(s)+1):
         if Buf[i:i+len(s)]==s:
             if i>=PageEnd:
@@ -368,8 +372,7 @@ def SearchNext():
 
 def SearchPrev():
     if SearchStr is None: return
-    global Index
-    s=list(SearchStr)
+    global Index; s=list(SearchStr)
     for i in range(Index-1,-1,-1):
         if Buf[i:i+len(s)]==s:
             if i<PageStart:
@@ -377,8 +380,7 @@ def SearchPrev():
             Index=i; return
 
 def Search():
-    global SearchStr
-    s=input('','/')
+    global SearchStr; s=input('','/')
     if s is not None: SearchStr=s[1:]; SearchNext()
 
 # high-level functions built on core functions
@@ -394,10 +396,8 @@ def Bottom():
     Index=PageEnd    
 def ScreenTop(): global Index; Index=PageStart
 def ScreenBottom(): global Index; Index=lineTop(max(PageEnd-1,0))
-def PageUp():
-    for i in range(curses.LINES//2): ScrollUp(); Down()
-def PageDown():
-    for i in range(curses.LINES//2): ScrollDown(); Up()
+def PageUp(): for i in range(curses.LINES//2): ScrollUp(); Down()
+def PageDown(): for i in range(curses.LINES//2): ScrollDown(); Up()
 def WordForward():
     global Index,TargetCol
     Index=nextWord(Index); Display(); TargetCol=Col
