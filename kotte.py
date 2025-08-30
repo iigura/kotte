@@ -189,7 +189,7 @@ def Insert():
         if c==ESC: break
         if c==DEL: Left(); Del()
         elif c in Act: Act[c]()
-        else:
+        elif isinstance(c,str):
             Buf.insert(Index,c);Attr.insert(Index,curses.A_NORMAL)
             Right()
 
@@ -396,8 +396,10 @@ def Bottom():
     Index=PageEnd    
 def ScreenTop(): global Index; Index=PageStart
 def ScreenBottom(): global Index; Index=lineTop(max(PageEnd-1,0))
-def PageUp(): for i in range(curses.LINES//2): ScrollUp(); Down()
-def PageDown(): for i in range(curses.LINES//2): ScrollDown(); Up()
+def PageUp():
+    for i in range(curses.LINES//2): ScrollUp(); Down()
+def PageDown():
+    for i in range(curses.LINES//2): ScrollDown(); Up()
 def WordForward():
     global Index,TargetCol
     Index=nextWord(Index); Display(); TargetCol=Col
@@ -494,9 +496,7 @@ def restoreCtrlC(originalTermios,originalSigint):
 
 def Main(stdscr,targetFilePath):
     global StdScr,AbsFilePath,FilePathForDisp,Buf,Attr,SavedHash
-    StdScr=stdscr
-    Load(targetFilePath)
-    curses.raw()
+    StdScr=stdscr; Load(targetFilePath); curses.raw()
     while not Done:
         Display()
         c=stdscr.get_wch()
