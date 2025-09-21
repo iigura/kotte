@@ -1,4 +1,5 @@
 # kotte = Kanji Oriented Tiny Text Editor by Koji Iigura, 2025.
+
 import sys,os,subprocess,termios,signal,curses,unicodedata,hashlib
 
 ESC='\x1b'; CR='\n'; DEL='\x7f'
@@ -6,162 +7,21 @@ CtrlD='\x04';CtrlE='\x05';CtrlQ='\x11';CtrlR='\x12';CtrlS='\x13'
 CtrlU='\x15';CtrlY='\x19'
 TabSize=4
 
-Buf=[];Attr=[];Done=False;SavedHash=None
+Buf=[]; Attr=[]; Done=False; SavedHash=None
 AbsFilePath=FilePathForDisp=None
 Index=PageStart=PageEnd=Row=Col=TargetCol=0
-SelectionBasePoint=-1; LastIndexForDisplay=None; InfoStr=''
+UpdateTargetCol=False
+SelectionBasePoint=-1; LastIndexForDisplay=None 
 SearchStr=None
 StdScr=None
 
-charWidth=lambda x,c: TabSize-x%TabSize if c=='\t' \
-          else 2 if unicodedata.east_asian_width(c) in 'WF' else 1
+def isDirty():
+    currentHash=hashlib.sha256(''.join(Buf).encode()).digest()
+    return SavedHash!=currentHash
 
-def getNextPos(p,x,y):
-    if p==len(Buf): w=1
-    else:
-        c=Buf[p]
-        if c=='\n': return (0,y+1)
-        w=charWidth(x,c)
-    newX,newY=(x+w,y) if x+w<curses.COLS else (0,y+1)
-    if p+1<len(Buf):
-        if newX+charWidth(newX,Buf[p+1])>curses.COLS:
-            newX=0; newY+=1
-    return newX,newY
-
-def getCol0Index(scanStartOffset):
-    p=scanStartOffset
-    while p>0 and Buf[p-1]!='\n': p-=1
-    return p
-
-def getCol(targetIndex):
-    p=getCol0Index(targetIndex)
-    if p==targetIndex: return 0
-    x=0; dummyY=-1 
-    while p<targetIndex: x,_=getNextPos(p,x,dummyY); p+=1
-    return x
-
-def lineTop(scanStartOffset):
-    if scanStartOffset<=0: return 0
-    if Buf[scanStartOffset-1]=='\n': return scanStartOffset
-    x=0; lineTopIndex=p=getCol0Index(scanStartOffset)
-    while p<scanStartOffset:
-        x,_=getNextPos(p,x,-1) # -1 == dummyY
-        if x==0: lineTopIndex=p+1
-        p+=1
-    return lineTopIndex
-
-def nextLineTop(scanStartOffset):
-    if scanStartOffset+1>=len(Buf): return None
-    if Buf[scanStartOffset]=='\n':  return scanStartOffset+1
-    x=0; p=lineTop(scanStartOffset)
-    while p<scanStartOffset: x,_=getNextPos(p,x,-1); p+=1
-    x,_=getNextPos(p,x,-1); p+=1 # -1 == dummyY
-    if p>=len(Buf): return None
-    while x!=0 and p<len(Buf): x,_=getNextPos(p,x,-1); p+=1
-    return p if p<len(Buf) else None          
-
-def getSelectedArea(index):
-    start=min(index,SelectionBasePoint)
-    end  =max(index,SelectionBasePoint)
-    return start,end
-    
-def clearSelectAreaAttr(index):
-    start,end=getSelectedArea(index)
-    for i in range(start,end): Attr[i] &= ~curses.A_REVERSE
-
-def setSelectAreaAttr(index):
-    start,end=getSelectedArea(index)
-    for i in range(start,end): Attr[i] |= curses.A_REVERSE
-
-isSelected=lambda: SelectionBasePoint>=0
-
-def Select():
-    global SelectionBasePoint,LastIndexForDisplay
-    if not isSelected():
-        SelectionBasePoint=LastIndexForDisplay=Index
-    else:
-        clearSelectAreaAttr(Index); SelectionBasePoint=-1
-
-def Display(statusLine=None):
-    global PageEnd,LastIndexForDisplay,InfoStr,Row,Col
-    assert Index>=PageStart,f"Index={Index} PageStart={PageStart}"
-    assert len(Buf)==len(Attr),f"Buf={len(Buf)} Attr={len(Attr)}"
-    if SelectionBasePoint>=0:
-        clearSelectAreaAttr(LastIndexForDisplay)
-        setSelectAreaAttr(Index)
-        LastIndexForDisplay=Index
-    StdScr.clear(); StdScr.move(0,0); x=y=0
-    p=PageStart
-    while not(curses.LINES-2<=y or len(Buf)<=p):
-        c=Buf[p]; a=Attr[p]
-        if p==Index: cursorX=x;cursorY=y
-        if c=='\n': y+=1; x=0
-        else:
-            w=charWidth(x,c)
-            if x+w<=curses.COLS: StdScr.addstr(y,x,c,a)
-            else: p-=1 # redo Buf[p]
-            x+=w
-        if x>=curses.COLS: y+=1; x=0
-        p+=1
-    PageEnd=p-1
-
-    if len(Buf)==0: Row,Col=0,0
-    elif Index>=len(Buf): Row,Col=y,x
-    else: Row,Col=cursorY,cursorX
-
-    if statusLine is None:
-        statusLine=FilePathForDisp
-        if isDirty(): statusLine+='(*)'
-    posInfo=f" Row:{Row} Col:{Col} "
-    totalWidth=curses.COLS
-    numOfMiddleSpace=totalWidth-len(statusLine)-len(posInfo)
-    s=statusLine+' '*numOfMiddleSpace+posInfo
-    StdScr.addstr(curses.LINES-2,0,s,curses.A_REVERSE)
-
-    StdScr.addstr(curses.LINES-1,0,InfoStr)
-    InfoStr=''
-    StdScr.move(Row,Col)
-    StdScr.refresh()
-
-def Left():
-    global Index,TargetCol,PageStart
-    if Index==0: return
-    Display(); Index-=1; newX=getCol(Index)
-    if newX==curses.COLS-1 and charWidth(newX,Buf[Index])>1: newX=0
-    newY=Row if Col>0 else Row-1
-    moveOnPrevLine = newY!=Row
-    if newY<0: newY=0; PageStart=lineTop(Index)
-    TargetCol=newX
-    return moveOnPrevLine
-
-def Right():
-    global Index,PageStart,TargetCol
-    if len(Buf)==0 or Index>=len(Buf): return None
-    TargetCol,newY=getNextPos(Index,Col,Row)
-    Index+=1
-    if newY>=curses.LINES-2:
-        newY=curses.LINES-3; PageStart=nextLineTop(PageStart)
-    moveOnNextLine = Row<newY
-    return moveOnNextLine
-
-def Up():
-    global Index,PageStart
-    Display(); p=lineTop(Index)
-    if p==0: return
-    p=lineTop(p-1); x=0; y=Row-1
-    while x<=TargetCol and y==Row-1: x,y=getNextPos(p,x,y); p+=1
-    Index=p-1; PageStart=min(PageStart,lineTop(Index))
-
-def Down():
-    global Index,PageStart
-    Display()
-    p=Index; x,y=Col,Row
-    while p<len(Buf):
-        x,y=getNextPos(p,x,y); p+=1
-        if y>Row and x>=TargetCol: break
-        if y>Row+1: p-=1; break
-    Index=p    
-    if y>curses.LINES-3: PageStart=nextLineTop(PageStart)
+def updateHash():
+    global SavedHash
+    SavedHash=hashlib.sha256(''.join(Buf).encode()).digest()
 
 def getFilePathStrForDisp():
     maxlen=curses.COLS//2
@@ -176,29 +36,176 @@ def getFilePathStrForDisp():
     if len(AbsFilePath)<=maxlen: return text
     return '...'+AbsFilePath[-(maxlen-3):] # with truncation
 
-def isDirty():
-    currentHash=hashlib.sha256(''.join(Buf).encode()).digest()
-    return SavedHash!=currentHash
+isLastRow=lambda y: y==curses.LINES-3
 
-def Insert():
-    global Index
-    while True:
-        Display()
-        StdScr.addstr(curses.LINES-1,0,'--- INSERT ---')
-        StdScr.move(Row,Col); c=StdScr.get_wch()
-        if c==ESC: break
-        if c==DEL: Left(); Del()
-        elif c in Act: Act[c]()
-        elif isinstance(c,str):
-            Buf.insert(Index,c);Attr.insert(Index,curses.A_NORMAL)
-            Right()
+charWidth=lambda x,c: TabSize-x%TabSize if c=='\t' \
+          else 2 if unicodedata.east_asian_width(c) in 'WF' else 1
+
+def top():global Index,PageStart; Index=PageStart=0
+
+def logicalLineTop(scanStartOffset):
+    p=scanStartOffset
+    while p>0 and Buf[p-1]!='\n': p-=1
+    return p
+
+def notice(msg,waitMsg='(hit any key)'):
+    y=curses.LINES-1
+    StdScr.move(y,0); StdScr.clrtoeol()      
+    StdScr.addstr(y,0,msg+(waitMsg if waitMsg is not None else ''))
+    StdScr.refresh()
+    if waitMsg is not None: StdScr.get_wch()
+
+def info(msg): notice(msg,waitMsg=None); return msg
+
+def getNextPos(p,x,y=-1):
+    c=Buf[p] # p shoule be in [0,bufSize))
+    if c=='\n': return (0,y+1)
+    w=charWidth(x,c)
+    newX,newY=(x+w,y) if x+w<curses.COLS else (0,y+1)
+    if p+1<len(Buf):
+        if newX+charWidth(newX,Buf[p+1])>curses.COLS:
+            newX=0; newY+=1
+    return newX,newY
+
+def getCol(targetIndex):
+    p=logicalLineTop(targetIndex)
+    if p==targetIndex: return 0
+    x=0
+    while p<targetIndex: x,_=getNextPos(p,x); p+=1
+    return x
+
+def lineTop(start): # start=scanStartOffset
+    if start<=0: return 0
+    if Buf[start-1]=='\n': return start
+    x=0; lineTopIndex=p=logicalLineTop(min(start,len(Buf)-1))
+    while p<start:
+        x,_=getNextPos(p,x)
+        if x==0: lineTopIndex=p+1
+        p+=1
+    return lineTopIndex
+
+def nextLineTop(start): # start=scanStartOffset
+    if start>=len(Buf)-1: return None
+    if Buf[start]=='\n': return start+1
+    x=getCol(start); p=start; dy=0
+    while (x!=0 or dy==0) and p<len(Buf):
+        x,dy=getNextPos(p,x,dy); p+=1
+    if dy==0: return None
+    return p
+
+def prevLineTop(start):
+    p=lineTop(start)
+    if p==0: return None
+    return lineTop(p-1)
+
+def lineEnd(start):
+    p=nextLineTop(start)
+    if p is None: return len(Buf)
+    return max(0,p-1)
+
+def screenTop(): global Index; Index=PageStart
+def screenBottom(): global Index; Index=lineTop(PageEnd)
+def scrollDown():
+    global PageStart
+    if PageStart==0: return
+    PageStart=lineTop(PageStart-1)
+
+def updatePageStart():
+    global PageStart
+    if Index<PageStart: PageStart=lineTop(Index)
+    elif PageEnd<Index: PageStart=nextLineTop(PageStart)
 
 def adjustPageStart():
     global PageStart
-    if Index<PageStart or PageEnd<Index:
-        PageStart=Index; ForcusCenterRow()
-    row=Row; Display()
-    if row>Row: Down()
+    PageStart=Index
+    for i in range(Row): scrollDown()
+
+isSelected=lambda: SelectionBasePoint>=0
+def getSelectedArea(index):
+    start=min(index,SelectionBasePoint)
+    end  =max(index,SelectionBasePoint)
+    return start,end
+def clearSelectAreaAttr(index):
+    start,end=getSelectedArea(index)
+    for i in range(start,end): Attr[i] &= ~curses.A_REVERSE
+def setSelectAreaAttr(index):
+    start,end=getSelectedArea(index)
+    for i in range(start,end): Attr[i] |= curses.A_REVERSE
+def Select():
+    global SelectionBasePoint,LastIndexForDisplay
+    if isSelected():
+        clearSelectAreaAttr(Index); SelectionBasePoint=-1
+    else:
+        SelectionBasePoint=LastIndexForDisplay=Index
+
+def insert(pos,c,a=curses.A_NORMAL):
+    if pos is None: Buf.append(c); Attr.append(a)
+    else: Buf.insert(pos,c); Attr.insert(pos,a)
+
+def Display(statusLine=None):
+    global PageEnd,LastIndexForDisplay,Row,Col,TargetCol
+    if isSelected():
+        clearSelectAreaAttr(LastIndexForDisplay)
+        setSelectAreaAttr(Index)
+        LastIndexForDisplay=Index
+    x=y=0; p=PageStart; StdScr.clear(); StdScr.move(0,0)
+    while y<curses.LINES-2 and p<=len(Buf):
+        c,a=(Buf[p],Attr[p]) if p<len(Buf) else (None,None)
+        if p==Index: cursorX=x;cursorY=y
+        if c=='\n': y+=1; x=0
+        elif c is not None:
+            w=charWidth(x,c)
+            if x+w<=curses.COLS: StdScr.addstr(y,x,c,a)
+            else: p-=1 # redo Buf[p]
+            x+=w
+        if x>=curses.COLS: y+=1; x=0
+        p+=1
+    PageEnd=p-1
+
+    Row,Col=cursorY,cursorX
+    if UpdateTargetCol: TargetCol=Col
+
+    if statusLine is None:
+        statusLine=FilePathForDisp
+        if isDirty(): statusLine+='(*)'
+    posInfo=f" Row:{Row} Col:{Col} "
+    totalWidth=curses.COLS
+    numOfMiddleSpace=totalWidth-len(statusLine)-len(posInfo)
+    s=statusLine+' '*numOfMiddleSpace+posInfo
+    StdScr.addstr(curses.LINES-2,0,s,curses.A_REVERSE)
+
+    StdScr.move(Row,Col)
+    StdScr.refresh()
+
+def Right():
+    global Index,UpdateTargetCol
+    if Index==len(Buf): return 
+    Index+=1; UpdateTargetCol=True; updatePageStart()
+
+def Left():
+    global Index,UpdateTargetCol
+    if Index==0: return
+    Index-=1; updatePageStart(); UpdateTargetCol=True
+
+def moveToTargetCol(lineTopIndex):
+    global Index
+    e=lineEnd(lineTopIndex)
+    for p in range(lineTopIndex,e+1):
+        x=getCol(p)
+        if x>=TargetCol: break
+    Index=p; updatePageStart()
+
+def Up():
+    global Index
+    s=prevLineTop(Index)
+    if s is None: Index=0; return
+    moveToTargetCol(s)
+
+def Down():
+    global Index,PageStart
+    s=nextLineTop(Index)
+    if s is None: Index=len(Buf); updatePageStart()
+    else: moveToTargetCol(s)
 
 def Del():
     global Index
@@ -206,55 +213,57 @@ def Del():
     if isSelected():
         start,end=getSelectedArea(Index)
         del Buf[start:end+1]; del Attr[start:end+1]
+        Select()
         Index=max(start-1,0); Right()
+        adjustPageStart() 
     else:
         if len(Buf)>0 and Index<len(Buf) and Buf[Index]!=CR:
             del Buf[Index]; del Attr[Index]
             Index=max(min(len(Buf),Index),0)
-    adjustPageStart()
+
+def Insert():
+    global Index,PageStart
+    info('--- INSERT ---')
+    while True:
+        Display()
+        StdScr.move(Row,Col); c=StdScr.get_wch()
+        if c==ESC: break
+        if c==DEL: Left(); Del()
+        elif c in Act: Act[c]()
+        elif isinstance(c,str):
+            insert(Index,c); Index+=1
+            if lineTop(Index)>PageEnd:
+                PageStart=nextLineTop(PageStart)
 
 def input(prompt='',initValue=''):
     y=curses.LINES-1
-    buf=list(initValue); x=len(prompt+initValue)
+    buf=list(initValue); x=len(prompt+initValue); n=len(prompt)
     while True:
-        StdScr.move(y,0); StdScr.clrtoeol()      
-        s=prompt+''.join(buf)
-        StdScr.addstr(y,0,s); StdScr.refresh()
+        s=prompt+''.join(buf); info(s)
         StdScr.move(y,x); c=StdScr.get_wch()
         if c==ESC: buf=None; break
         if c==CR : break
-        if c==curses.KEY_LEFT and x>len(prompt): x-=1
-        elif c==curses.KEY_RIGHT and x<len(s): x+=1
+        if c==curses.KEY_LEFT:
+            if x>n: x-=1
+        elif c==curses.KEY_RIGHT:
+            if x<len(s): x+=1
         elif c==DEL:
-            if x>len(prompt): del buf[x-len(prompt)-1]; x-=1
-        elif x<curses.COLS-1: buf.insert(x-len(prompt),c); x+=1
+            if x>n: del buf[x-n-1]; x-=1
+        elif x<curses.COLS-1: buf.insert(x-n,c); x+=1
     StdScr.move(y,0); StdScr.clrtoeol()
     return ''.join(buf) if buf is not None else None
 
-def info(msg,waitMsg='(hit any key)'):
-    global InfoStr
-    y=curses.LINES-1
-    StdScr.move(y,0); StdScr.clrtoeol()      
-    StdScr.addstr(y,0,msg+waitMsg if waitMsg is not None else '')
-    StdScr.refresh()
-    if waitMsg is not None: StdScr.get_wch()
-    else: InfoStr=msg
-
 def Quit(dummyParam=None):
     global Done
-    if dummyParam is not None: info('invalid param (:q!)'); return
+    if dummyParam is not None:notice('invalid param (:q!)');return
     Done=True    
 
-def SafeQuit(dummyParam):
-    if dummyParam is not None: info('invalid param (:q)'); return
+def SafeQuit(dummyParam): 
+    if dummyParam is not None:notice('invalid param (:q)'); return
     if isDirty():
         ans=input('NOT saved. really Quit? (y/n):')
         if ans!='y': return
     Quit()
-
-def updateHash():
-    global SavedHash
-    SavedHash=hashlib.sha256(''.join(Buf).encode()).digest()
 
 def updateTargetFile(targetFile):
     global AbsFilePath,FilePathForDisp
@@ -264,32 +273,32 @@ def updateTargetFile(targetFile):
 def Save(param=None):
     global AbsFilePath,FilePathForDisp
     if param is None:
-        if AbsFilePath is None: info('no file name.'); return
+        if AbsFilePath is None: notice('no file name.'); return
         outFilePath=AbsFilePath            
     else:
         p=param.strip().split()
-        if len(p)!=1: info('invalid param (:w)'); return
+        if len(p)!=1: notice('invalid param (:w)'); return
         outFilePath=p[0]; updateTargetFile(outFilePath)
     with open(outFilePath,'w',encoding='utf-8') as f:
         f.write(''.join(Buf))
-    info(f"SAVED:[{FilePathForDisp}]",waitMsg=None)
+    info(f"SAVED:[{FilePathForDisp}]")
     updateHash()
 
 def SaveAndQuit(dummyParam=None):
     if dummyParam is None:
-        if AbsFilePath is None: info('no file name.'); return
+        if AbsFilePath is None: notice('no file name.'); return
         Save(); Quit()
-    else: info('invalid param (:wq)')
+    else: notice('invalid param (:wq)')
 
 def Load(param):
     global AbsFilePath,FilePathForDisp,Buf,Attr,Index,PageStart
     if len(Buf)>0 and isDirty():
-        info('current buffer is not saved.'); return
+        notice('current buffer is not saved.'); return
     if param is None:
         AbsFilePath=None; FilePathForDisp='[NEW FILE]'
     else:
         p=param.strip().split()
-        if len(p)!=1: info('invalid param (:e)'); return
+        if len(p)!=1: notice('invalid param (:e)'); return
         filePath=p[0]; updateTargetFile(filePath)
         with open(AbsFilePath) as f: Buf=list(f.read())
         Attr=[curses.A_NORMAL for i in range(len(Buf))]
@@ -305,28 +314,29 @@ def doColonCmd(cmdStr):
     cmd=tokens[0]
     param=tokens[1] if len(tokens)>1 else None
     if cmd in ColonCmd: ColonCmd[cmd](param)
-    else: info(f"no such command [{cmd}].")
+    else: notice(f"no such command [{cmd}].")
     
 def Colon():
     s=input('',':')
     if s is not None: doColonCmd(s)
 
 def LineBegin():
-    global Index,TargetCol; Index=lineTop(Index); TargetCol=0
+    global Index,UpdateTargetCol
+    Index=lineTop(Index); UpdateTargetCol=True
 
-def deleteLine(indexOfTheTargetLine):
+def deleteLine():
     global Index,PageStart
     if isSelected():
         start,end=getSelectedArea(Index); end+=1; Select()
     else:
-        start=lineTop(indexOfTheTargetLine)
-        end=nextLineTop(indexOfTheTargetLine)
+        start=lineTop(Index); end=nextLineTop(Index)
     if end is None: del Buf[Index:]; del Attr[Index:]
     else: del Buf[start:end]; del Attr[start:end]
-    Index=max(start-1,0); LineBegin()
+    Index=max(start-1,0); LineBegin(); Down()
     adjustPageStart()
 
-isWordBoundary=lambda c:unicodedata.category(c)[0] in 'ZPS'
+def isWordBoundary(c):
+    return c in '\n\t' or unicodedata.category(c)[0] in 'ZPS'
 
 def nextWord(startIndex):
     if startIndex>=len(Buf): return len(Buf)
@@ -345,108 +355,97 @@ def prevWord(startIndex):
 
 def deleteWord(startIndex):
     end=nextWord(startIndex)
-    del Buf[startIndex:end]; del Attr[startIndex:end]
+    del Buf[startIndex:end-1]; del Attr[startIndex:end-1]
+
+def WordForward():
+    global Index,UpdateTargetCol
+    Index=nextWord(Index); UpdateTargetCol=True
+def WordBackward():
+    global Index,UpdateTargetCol
+    Index=prevWord(Index); UpdateTargetCol=True
 
 def ScrollUp():
     global PageStart
-    if PageEnd+1>=len(Buf): return
+    if PageEnd>=len(Buf): return
     p=nextLineTop(PageStart)
     if Index<p: Down()
     PageStart=p
-
+ 
 def ScrollDown():
-    global PageStart
-    if PageStart==0: return
-    if lineTop(Index)>=lineTop(PageEnd): Up()    
-    PageStart=lineTop(PageStart-1)
+    oldPS=PageStart; scrollDown()
+    if oldPS!=PageStart and Row>=curses.LINES-3: Up()
 
+def search(targetRange):
+    if SearchStr is None: return
+    global Index; s=list(SearchStr)
+    for i in targetRange:
+        if Buf[i:i+len(s)]==s:
+            Index=i
+            if i<PageStart or PageEnd<i: adjustPageStart()
+            return
+    return info(f"pattern not found: {SearchStr}")
 def SearchNext():
-    if SearchStr is None: return
-    global Index; s=list(SearchStr)
-    for i in range(Index+1,len(Buf)-len(s)+1):
-        if Buf[i:i+len(s)]==s:
-            if i>=PageEnd:
-                while i>=PageEnd: Down()
-                ScrollDown()
-            Index=i; return
-
-def SearchPrev():
-    if SearchStr is None: return
-    global Index; s=list(SearchStr)
-    for i in range(Index-1,-1,-1):
-        if Buf[i:i+len(s)]==s:
-            if i<PageStart:
-                while i<PageStart: Up()
-            Index=i; return
-
+    if SearchStr is not None:
+        return search(range(Index+1,len(Buf)-len(SearchStr)+1))
+def SearchPrev():search(range(Index-1,-1,-1))
 def Search():
     global SearchStr; s=input('','/')
-    if s is not None: SearchStr=s[1:]; SearchNext()
+    if s is not None: SearchStr=s[1:]; return SearchNext()
 
-# high-level functions built on core functions
-def LineEnd():
-    Display(); y=Row
-    while y==Row and (Right() is not None): Display()
-    if y<Row: Left()
-def Top():global Index,PageStart; Index=PageStart=0
+def LineEnd(): global Index; Index=lineEnd(Index)
+
 def Bottom():
-    global PageStart,Index
-    Index=PageStart=lineTop(len(Buf)-1); Display()
-    for i in range(curses.LINES-3): Up()
-    Index=PageEnd    
-def ScreenTop(): global Index; Index=PageStart
-def ScreenBottom(): global Index; Index=lineTop(max(PageEnd-1,0))
+    global Index,Row
+    Index=lineTop(len(Buf)); Row=curses.LINES-3; adjustPageStart()
+
 def PageUp():
     for i in range(curses.LINES//2): ScrollUp(); Down()
 def PageDown():
-    for i in range(curses.LINES//2): ScrollDown(); Up()
-def WordForward():
-    global Index,TargetCol
-    Index=nextWord(Index); Display(); TargetCol=Col
-def WordBackward():
-    global Index,TargetCol
-    Index=prevWord(Index); Display(); TargetCol=Col
+    for i in range(curses.LINES//2): scrollDown(); Up()
+
 def Join():
     p=Index; LineEnd()
     while Buf[p]!=CR and p<len(Buf): p+=1
     if p<len(Buf) and Buf[p]==CR: Buf[p]=' '
+
 def InsertLineBelow():
-    LineEnd(); Display()
-    Buf.insert(Index,'\n'); Attr.insert(Index,curses.A_NORMAL)
-    Right(); Display(); Insert()
+    global Index
+    p=nextLineTop(Index)
+    if not (Col==0 and p is None):
+        insert(p,'\n'); Index=len(Buf)-1 if p is None else p
+        updatePageStart()
+    Insert()
+
 def InsertLineAbove():
-    if lineTop(Index)==0: Buf.insert(0,'\n')
+    global Index
+    if lineTop(Index)==0:
+        Buf.insert(0,'\n'); Attr.insert(0,curses.A_NORMAL)
+        Index=0; Insert()
     else: Up(); InsertLineBelow()
+
 def Append():
     if 0<=Index<len(Buf) and Buf[Index]!='\n': Right()
     Insert()
+
 def Replace():
-    info('(replace to)',waitMsg=None); Display()
-    c=StdScr.get_wch()
+    info('(replace to) '); c=StdScr.get_wch()
+    if c==ESC: return
     if isSelected():
         start,end=getSelectedArea(Index)        
         Buf[start:end+1]=[c]*(end+1-start)
         Select()
     else:
         if 0<=Index<len(Buf): Buf[Index]=c
+
 def ForcusCenterRow():
-    global PageStart
-    Display()
-    targetRow=(curses.LINES-3)//2
-    if targetRow==Row: return
-    if Row<targetRow:
-        while Row<targetRow and PageStart>0:
-            PageStart=lineTop(PageStart-1); Display()
-    else:
-        while Row>targetRow:
-            if lineTop(PageEnd)==lineTop(PageStart): break
-            PageStart=nextLineTop(PageStart); Display()
+    global Row; Row=(curses.LINES-3)//2; adjustPageStart()
+
 def getSecondKey(infoMsg):
-    info(infoMsg,waitMsg=None); Display()
+    info(infoMsg)
     return StdScr.get_wch()
 def Prefix_d():
     c=getSecondKey('(Prefix d)')
-    if c=='d': deleteLine(Index)
+    if c=='d': deleteLine()
     elif c=='w': deleteWord(Index)
 def Prefix_z():
     c=getSecondKey('(Prefix z)')
@@ -458,11 +457,12 @@ def PrefixZ():
 Act={curses.KEY_LEFT :Left,curses.KEY_RIGHT :Right,
      curses.KEY_UP   :Up,  curses.KEY_DOWN  :Down,
      curses.KEY_SLEFT:LineBegin,curses.KEY_SRIGHT:LineEnd,
-     CtrlE:ScrollUp,CtrlY:ScrollDown,CtrlU:PageDown,CtrlD:PageUp, }
+     CtrlE:ScrollUp,CtrlY:ScrollDown,CtrlU:PageDown,CtrlD:PageUp,
+}
 
 Cmd={'h':Left,'l':Right,'k':Up,'j':Down,'v':Select,
-     '0':LineBegin,'$':LineEnd,'g':Top,'G':Bottom,
-     'H':ScreenTop,'L':ScreenBottom,':':Colon,
+     '0':LineBegin,'$':LineEnd,'g':top,'G':Bottom,
+     'H':screenTop,'L':screenBottom,':':Colon,
      'w':WordForward,'b':WordBackward,'i':Insert,'a':Append,
      'o':InsertLineBelow,'O':InsertLineAbove,
      '/':Search,'n':SearchNext,'N':SearchPrev,
@@ -495,13 +495,14 @@ def restoreCtrlC(originalTermios,originalSigint):
     signal.signal(signal.SIGINT,originalSigint)
 
 def Main(stdscr,targetFilePath):
-    global StdScr,AbsFilePath,FilePathForDisp,Buf,Attr,SavedHash
-    StdScr=stdscr; Load(targetFilePath); curses.raw()
+    global UpdateTargetCol,StdScr; StdScr=stdscr
+    Load(targetFilePath); curses.raw(); infoStr=None
     while not Done:
-        Display()
+        Display(); UpdateTargetCol=False
+        if infoStr is not None: info(infoStr)
         c=stdscr.get_wch()
-        if   c in Act: Act[c]()
-        elif c in Cmd: Cmd[c]()
+        if   c in Act: infoStr=Act[c]()
+        elif c in Cmd: infoStr=Cmd[c]()
 
 def kotte(targetFilePath):
     originalTermios,originalSigint=disableCtrlC()
@@ -516,4 +517,3 @@ def kotte(targetFilePath):
 if __name__ == "__main__":
     targetFilePath=sys.argv[1] if len(sys.argv)==2 else None
     kotte(targetFilePath)
-
