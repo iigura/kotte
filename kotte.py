@@ -160,8 +160,7 @@ def Display(statusLine=None):
             x+=w
         if x>=curses.COLS: y+=1; x=0
         p+=1
-    PageEnd=p-1
-
+    PageEnd=p-1; filledRow = y>=curses.LINES-3
     Row,Col=cursorY,cursorX
     if UpdateTargetCol: TargetCol=Col
 
@@ -176,6 +175,7 @@ def Display(statusLine=None):
 
     StdScr.move(Row,Col)
     StdScr.refresh()
+    return filledRow
 
 def Right():
     global Index,UpdateTargetCol
@@ -225,14 +225,14 @@ def Insert():
     global Index,PageStart
     info('--- INSERT ---')
     while True:
-        Display()
+        filledRow=Display()
         StdScr.move(Row,Col); c=StdScr.get_wch()
         if c==ESC: break
         if c==DEL: Left(); Del()
         elif c in Act: Act[c]()
         elif isinstance(c,str):
             insert(Index,c); Index+=1
-            if lineTop(Index)>PageEnd:
+            if lineTop(Index)>PageEnd and filledRow:
                 PageStart=nextLineTop(PageStart)
 
 def input(prompt='',initValue=''):
