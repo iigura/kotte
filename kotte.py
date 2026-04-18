@@ -124,16 +124,15 @@ def getSelectedArea(index):
     start=min(index,SelectionBasePoint)
     end  =max(index,SelectionBasePoint)
     return start,end
-def clearSelectAreaAttr(index):
+def updateAttr(index,op):
     start,end=getSelectedArea(index)
-    for i in range(start,end): Attr[i] &= ~curses.A_REVERSE
-def setSelectAreaAttr(index):
-    start,end=getSelectedArea(index)
-    for i in range(start,end): Attr[i] |= curses.A_REVERSE
+    for i in range(start,end): Attr[i]=op(Attr[i])
+clrSelAttr=lambda i:updateAttr(i,lambda a:a&~curses.A_REVERSE)
+setSelAttr=lambda i:updateAttr(i,lambda a:a| curses.A_REVERSE)
 def Select():
     global SelectionBasePoint,LastIndexForDisplay
     if isSelected():
-        clearSelectAreaAttr(Index); SelectionBasePoint=-1
+        clrSelAttr(Index); SelectionBasePoint=-1
     else:
         SelectionBasePoint=LastIndexForDisplay=Index
 
@@ -144,8 +143,8 @@ def insert(pos,c,a=curses.A_NORMAL):
 def Display(statusLine=None):
     global PageEnd,LastIndexForDisplay,Row,Col,TargetCol
     if isSelected():
-        clearSelectAreaAttr(LastIndexForDisplay)
-        setSelectAreaAttr(Index)
+        clrSelAttr(LastIndexForDisplay)
+        setSelAttr(Index)
         LastIndexForDisplay=Index
     x=y=0; p=PageStart; StdScr.clear(); StdScr.move(0,0)
     while y<curses.LINES-2 and p<=len(Buf):
