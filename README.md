@@ -1,6 +1,6 @@
 # KOTTE - Kanji Oriented Tiny Text Editor
 A compact full-screen text editor implemented
-in a single Python file (~520 lines).
+in a single Python file (~500 lines).
 Demonstrates practical handling of multibyte, multiwidth
 Japanese/English mixed text in a terminal environment.
 
@@ -20,7 +20,7 @@ Version 1.0b1 (Beta) – Core features are in place, testing in progress.
 * Handles multibyte, multiwidth characters correctly (yes, Japanese Kanji included!)
 * Lets you edit mixed Japanese/English text without breaking layout
 * Basic but essential editing: insert, delete, search, move around with the cursor
-* Small codebase (~520 lines) so you can actually read it without a headache
+* Small codebase (~500 lines) so you can actually read it without a headache
 * Runs in your terminal with just Python and curses
 
 ## Usage
