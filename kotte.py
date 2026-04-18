@@ -437,7 +437,7 @@ def Replace():
     else:
         if 0<=Index<len(Buf): Buf[Index]=c
 
-def ForcusCenterRow():
+def FocusCenterRow():
     global Row; Row=(curses.LINES-3)//2; adjustPageStart()
 
 def getSecondKey(infoMsg):
@@ -449,7 +449,7 @@ def Prefix_d():
     elif c=='w': deleteWord(Index)
 def Prefix_z():
     c=getSecondKey('(Prefix z)')
-    if c=='z': ForcusCenterRow()
+    if c=='z': FocusCenterRow()
 def PrefixZ():
     c=getSecondKey('(Prefix Z)')
     if c=='Z': SaveAndQuit()
