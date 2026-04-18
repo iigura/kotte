@@ -176,15 +176,13 @@ def Display(statusLine=None):
     StdScr.refresh()
     return filledRow
 
-def Right():
+def moveH(delta):
     global Index,UpdateTargetCol
-    if Index==len(Buf): return 
-    Index+=1; UpdateTargetCol=True; updatePageStart()
-
-def Left():
-    global Index,UpdateTargetCol
-    if Index==0: return
-    Index-=1; updatePageStart(); UpdateTargetCol=True
+    p=max(0,min(len(Buf),Index+delta))
+    if p!=Index:
+        Index=p; updatePageStart(); UpdateTargetCol=True
+Left =lambda: moveH(-1)
+Right=lambda: moveH(+1)
 
 def moveToTargetCol(lineTopIndex):
     global Index
@@ -357,12 +355,11 @@ def deleteWord(startIndex):
     end=nextWord(startIndex)
     del Buf[startIndex:end-1]; del Attr[startIndex:end-1]
 
-def WordForward():
+def wordMove(func):
     global Index,UpdateTargetCol
-    Index=nextWord(Index); UpdateTargetCol=True
-def WordBackward():
-    global Index,UpdateTargetCol
-    Index=prevWord(Index); UpdateTargetCol=True
+    Index=func(Index); UpdateTargetCol=True
+WordForward =lambda: wordMove(nextWord)
+WordBackward=lambda: wordMove(prevWord)
 
 def ScrollUp():
     global PageStart
