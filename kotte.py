@@ -1,4 +1,4 @@
-# kotte = Kanji Oriented Tiny Text Editor by Koji Iigura, 2025.
+# kotte = Kanji Oriented Tiny Text Editor by Koji Iigura, 2025 - 2026.
 
 import sys,os,subprocess,termios,signal,curses,unicodedata,hashlib
 
@@ -30,10 +30,9 @@ def getFilePathStrForDisp():
     if AbsFilePath.startswith(home):
         candidate='~'+AbsFilePath[len(home):]
     if len(candidate)<=maxlen: return candidate
-    # try using a relative path format
-    candidate=os.path.relpath(AbsFilePath,os.getcwd())
-    if len(candidate)<=maxlen: return rel
-    if len(AbsFilePath)<=maxlen: return text
+    relpath=os.path.relpath(AbsFilePath,os.getcwd())
+    if len(candidate)<=maxlen: return relpath
+    if len(AbsFilePath)<=maxlen: return AbsFilePath
     return '...'+AbsFilePath[-(maxlen-3):] # with truncation
 
 isLastRow=lambda y: y==curses.LINES-3
