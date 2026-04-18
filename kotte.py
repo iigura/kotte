@@ -292,9 +292,10 @@ def SaveAndQuit(dummyParam=None):
 def Load(param):
     global AbsFilePath,FilePathForDisp,Buf,Attr,Index,PageStart
     if len(Buf)>0 and isDirty():
-        notice('current buffer is not saved.'); return
-    if param is None:
+        notice('current buffer is not saved.')
+    elif param is None:
         AbsFilePath=None; FilePathForDisp='[NEW FILE]'
+        Buf=[]; Attr=[]
     else:
         p=param.strip().split()
         if len(p)!=1: notice('invalid param (:e)'); return
